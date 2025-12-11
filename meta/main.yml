@@ -1,7 +1,10 @@
 ---
 galaxy_info:
   author: S. Mannem
-  description: CTO
+  description: |
+    Wal-g is a tool to backup PostgreSQL databases to an S3 bucket.
+    This role installs wal-g and additionally the scripts to use it.
+
   company: Nibble-IT
 
   # If the issue tracker for your role is not on github, uncomment the
