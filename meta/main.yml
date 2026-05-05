@@ -1,5 +1,7 @@
 ---
 galaxy_info:
+  namespace: pgvillage
+  role_name: walg
   author: S. Mannem
   description: |
     Wal-g is a tool to backup PostgreSQL databases to an S3 bucket.
