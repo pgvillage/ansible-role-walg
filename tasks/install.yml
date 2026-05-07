@@ -29,7 +29,7 @@
 
 - name: Install wal-g package
   become: true
-  ansible.builtin.dnf:
+  ansible.builtin.package:
     name: "{{ item }}"
     state: "{{ walg_package_state }}"
     disable_gpg_check: true
