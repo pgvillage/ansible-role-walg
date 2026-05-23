@@ -32,5 +32,4 @@
   ansible.builtin.package:
     name: "{{ item }}"
     state: "{{ walg_package_state }}"
-    disable_gpg_check: true
   loop: "{{ walg_packages }}"
