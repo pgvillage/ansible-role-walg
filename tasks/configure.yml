@@ -53,17 +53,17 @@
 - name: Configure WAL-G backup cron
   ansible.builtin.cron:
     name: "wal-g backup {{ walg_cluster.key }}"
-    minute: "{{ walg_cluster.value.cron.minute | default(walg_cron_minute) }}"
-    hour: "{{ walg_cluster.value.cron.hour | default(walg_cron_hour) }}"
-    dom: "{{ walg_cluster.value.cron.dom | default(walg_cron_dom) }}"
-    dow: "{{ walg_cluster.value.cron.dow | default(walg_cron_dow) }}"
-    month: "{{ walg_cluster.value.cron.month | default(walg_cron_month) }}"
-    job: "{{ walg_home }}/scripts/backup_locked.sh {{ walg_cluster.key }}"
+    minute: "{{ (walg_cluster.value.cron | default({})).minute | default(walg_cron_minute) }}"
+    hour: "{{ (walg_cluster.value.cron | default({})).hour | default(walg_cron_hour) }}"
+    dom: "{{ (walg_cluster.value.cron | default({})).dom | default(walg_cron_dom) }}"
+    dow: "{{ (walg_cluster.value.cron | default({})).dow | default(walg_cron_dow) }}"
+    month: "{{ (walg_cluster.value.cron | default({})).month | default(walg_cron_month) }}"
+    job: "{{ walg_cron_command }} {{ walg_cluster.key }}"
     user: "{{ walg_user }}"
     cron_file: wal-g
     state: >-
       {{
         'present'
-        if walg_cluster.value.cron.enabled | default(walg_cron_enabled)
+        if (walg_cluster.value.cron | default({})).enabled | default(walg_cron_enabled)
         else 'absent'
       }}

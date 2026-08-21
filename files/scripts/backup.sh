@@ -20,7 +20,7 @@ function backup() {
   "$SCRIPTDIR/maintenance.sh" "$CLUSTER"
 }
 
-SCRIPTDIR=$(dirname $0)
+SCRIPTDIR=$(dirname "$0")
 
 # WAL-g config laden
 CLUSTER="${1:?Cluster name required}"

@@ -11,7 +11,7 @@ function list_backups() {
 	/usr/local/bin/wal-g-pg wal-show
 }
 
-SCRIPTDIR=$(dirname $0)
+SCRIPTDIR=$(dirname "$0")
 
 # WAL-g config laden
 CLUSTER="${1:?Cluster name required}"

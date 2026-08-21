@@ -15,9 +15,12 @@ function delete_backups() {
       echo "Nothing to do. Want to retain ${WALG_RETENTION_FULL_BACKUPS} full backups and there are only ${NUMBACKUPS}."
       return
     fi
-    FIRSTTOKEEP=$(echo "${BACKUPS}" | xars -n1 | tail -n "${WALG_RETENTION_FULL}" | head -n1)
-    echo "Cleaning all backups before full ${FIRSTTOKEEP}"
-    /usr/local/bin/wal-g-pg delete before "${FIRSTTOKEEP}" --confirm
+    FIRSTTOKEEP=$(
+      echo "${BACKUPS}" |
+        xargs -n1 |
+        tail -n "${WALG_RETENTION_FULL_BACKUPS}" |
+        head -n1
+    )
   elif [ "${WALG_RETENTION_BACKUPS}" ]; then
     BACKUPS=$(/usr/local/bin/wal-g-pg backup-list | awk '$1~/^base/{print $1}')
     NUMBACKUPS=$(echo "${BACKUPS}" | wc -w)
@@ -25,7 +28,7 @@ function delete_backups() {
       echo "Nothing to do. Want to retain ${WALG_RETENTION_BACKUPS} backups and there are only ${NUMBACKUPS}."
       return
     fi
-    FIRSTTOKEEP=$(echo "${BACKUPS}" | xars -n1 | tail -n "${WALG_RETENTION_FULL}" | head -n1)
+    FIRSTTOKEEP=$(echo "${BACKUPS}" | xargs -n1 | tail -n "${WALG_RETENTION_FULL}" | head -n1)
     echo "Cleaning all backups before ${FIRSTTOKEEP}"
     /usr/local/bin/wal-g-pg delete before FIND_FULL "${FIRSTTOKEEP}" --confirm
   else

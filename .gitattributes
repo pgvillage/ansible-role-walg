@@ -1,0 +1,9 @@
+# Shell scripts must always use Unix line endings
+*.sh text eol=lf
+
+# Ansible/YAML
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Jinja templates
+*.j2 text eol=lf
