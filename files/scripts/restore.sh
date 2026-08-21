@@ -1,99 +1,170 @@
 #!/bin/bash
-set -ex
+set -e
 
 recovery_conf() {
-  echo "recovery_target_action = promote";
-  # Postgres biedt voor Point in time Recovery de mogelijkheid om een target xid, targettime of target name te gebruiken.
-  # Dit script behandelt $2 als input en bepaat welke van de drie het is.
-  # Deze functie zorgt dat de juiste info in postgresql.conf wordt opgenomen zodat recovery goed plaats vind.
-  # Eventueel zorgt Patroni dat de config weer wordt opgeruimd als de instance na PITR weer live is.
-  if [ "$RESTORETARGETTIME" ]; then
+  echo "recovery_target_action = promote"
+
+  # PostgreSQL PITR can use a target timestamp, XID, or restore point name.
+  if [ -n "${RESTORETARGETTIME:-}" ]; then
     echo "recovery_target_time = '$RESTORETARGETTIME'"
-  elif [ "$RESTORETARGETXID" ]; then
+  elif [ -n "${RESTORETARGETXID:-}" ]; then
     echo "recovery_target_xid = '$RESTORETARGETXID'"
-  elif [ "$RESTORETARGETNAME" ]; then
+  elif [ -n "${RESTORETARGETNAME:-}" ]; then
     echo "recovery_target_name = '$RESTORETARGETNAME'"
   fi
 }
 
-
 earliest_backup() {
-  # Dit commando geeft het eerste veld op de laatste terug. Dat is de naam van de laatste backup.
   /usr/local/bin/wal-g-pg backup-list | sed -n '2{s/ .*//;p}'
 }
 
 latest_backup_before() {
-  # Dit commando vergelijkt alle backups met RestoreDat en geeft de laatste backup voor die datum terug.
-  /usr/local/bin/wal-g-pg backup-list | awk -v RestoreDate="$1" '{if (FNR>1 && $2<=RestoreDate) {print $1}}' | tail -n1
+  /usr/local/bin/wal-g-pg backup-list |
+    awk -v RestoreDate="$1" \
+      '{if (FNR > 1 && $2 <= RestoreDate) {print $1}}' |
+    tail -n1
 }
 
 latest_backup() {
-  # Dit commando geeft het eerste veld op de laatste terug. Dat is de naam van de laatste backup.
   # shellcheck disable=SC2016
   /usr/local/bin/wal-g-pg backup-list | sed -n '${s/ .*//;p}'
 }
 
-# WAL-g config laden
-eval "$(sed '/#/d;s/^/export /' /etc/default/wal-g)"
+#
+# Arguments:
+#
+#   $1 = cluster name
+#   $2 = restore directory (optional, defaults to PGDATA)
+#   $3 = restore target (optional)
+#
+# Examples:
+#
+#   restore.sh cluster1
+#   restore.sh cluster1 /data/restore/cluster1
+#   restore.sh cluster1 /data/restore/cluster1 "2026-08-20 14:30:00"
+#   restore.sh cluster1 /data/restore/cluster1 12345678
+#   restore.sh cluster1 /data/restore/cluster1 before_migration
+#
 
-# PGRESTORE wordt ingesteld op:
-# - parameter 1, of
-# - zichzelf als hij al ingesteld was, of
-# - PGDATA
-PGRESTORE=${1:-${PGRESTORE:-$PGDATA}}
-mkdir -p "${PGRESTORE}"
+CLUSTER="${1:?Cluster name required}"
+CONFIG="/etc/default/wal-g-${CLUSTER}"
 
-if [ -e "$PGRESTORE/PG_VERSION" ]; then
-  echo "File $PGRESTORE/PG_VERSION exists. This is not an empty Datadirectory. Make sure this is OK, clean the folder, and then rerun this script."
+if [ ! -r "$CONFIG" ]; then
+  echo "WAL-G configuration not found: $CONFIG" >&2
   exit 1
 fi
 
-# Gebruik parameter $2 als input, of gebruik de env var RESTORETARGETINPUT als $2 niet gezet is.
-RESTORETARGETINPUT="${2:-$RESTORETARGETINPUT}"
+# Load cluster-specific WAL-G/PostgreSQL configuration.
+eval "$(sed '/#/d;s/^/export /' "$CONFIG")"
 
-# Postgres biedt voor Point in time Recovery de mogelijkheid om een target xid, targettime of target name te gebruiken.
-# Dit script behandelt $2 als input en bepaat welke van de drie het is.
-# Deze functie zorgt dat de juiste info in postgresql.conf wordt opgenomen zodat recovery goed plaats vind.
-# Eventueel zorgt Patroni dat de config weer wordt opgeruimd als de instance na PITR weer live is.
+PGRESTORE="${2:-${PGRESTORE:-$PGDATA}}"
+RESTORETARGETINPUT="${3:-${RESTORETARGETINPUT:-}}"
+
+# When restoring outside the normal PGDATA, use a separate PostgreSQL port.
+# Example:
+#   cluster1: PGPORT=5432 -> restore port 15432
+#   cluster2: PGPORT=5433 -> restore port 15433
+PGRESTOREPORT="${PGRESTOREPORT:-$((PGPORT + 10000))}"
+
+mkdir -p "$PGRESTORE"
+
+if [ -e "$PGRESTORE/PG_VERSION" ]; then
+  echo "File $PGRESTORE/PG_VERSION exists."
+  echo "This is not an empty data directory."
+  echo "Clean the directory or choose another restore directory, then rerun this script."
+  exit 1
+fi
+
+#
+# Determine which backup to fetch and, if applicable, which PITR target
+# PostgreSQL should recover to.
+#
 if [ -z "$RESTORETARGETINPUT" ]; then
-  # Geen target meegegeven. Gebruik gewoon de laatste backup als target
+
+  # No target supplied: restore the latest backup.
   RESTORETARGET=$(latest_backup)
+
 elif [[ "$RESTORETARGETINPUT" =~ ^[0-9]+$ ]]; then
-  # target is een xid. 
+
+  # Numeric target: assume PostgreSQL transaction ID.
   echo "$RESTORETARGETINPUT seems like an XID."
-  echo "We cannot detect which backup to restore, so we restore the earliest and leave it up to recovery."
-  echo "Alternatively you can restore a specific backup and manually set recovery_target_xid in postgresql.conf"
+  echo "We cannot determine exactly which backup contains this XID."
+  echo "Restoring the earliest available backup and leaving PITR to PostgreSQL."
+
   RESTORETARGET=$(earliest_backup)
-  RESTORETARGETXID=${RESTORETARGETINPUT}
+  RESTORETARGETXID="$RESTORETARGETINPUT"
+
 else
-  # Probeer als date te parsen. Als het niet, dan maar direct gebruiken als target.
-  RESTORETARGETTIME=$(date -d "$RESTORETARGETINPUT" --rfc-3339 seconds) || RESTORETARGETTIME= && RESTORETARGET="${2}"
-  if [ "$RESTORETARGETTIME" ]; then
-    # Waarschijnlijk was $2 meegegeven (of RESTORETARGETTIME was gezet). Zoek de laatste backup voor die restore date.
+
+  # First try interpreting the value as a date/time.
+  if RESTORETARGETTIME=$(
+    date -d "$RESTORETARGETINPUT" --rfc-3339 seconds 2>/dev/null
+  ); then
+
+    echo "$RESTORETARGETINPUT seems like a timestamp."
+
     RESTORETARGET=$(latest_backup_before "$RESTORETARGETTIME")
+
+    if [ -z "$RESTORETARGET" ]; then
+      echo "No WAL-G backup was found before $RESTORETARGETTIME." >&2
+      exit 1
+    fi
+
   else
-    echo "$RESTORETARGETINPUT does not seem like a date or XID. Expecting it is an recovery_target_name"
-    echo "We cannot detect which backup to restore, so we restore the earliest and leave it up to recovery."
-    echo "Alternatively you can restore a specific backup and manually set recovery_target_name in postgresql.conf"
+
+    RESTORETARGETTIME=""
+
+    # Not a timestamp or XID: assume PostgreSQL restore point name.
+    echo "$RESTORETARGETINPUT does not seem like a date or XID."
+    echo "Assuming it is a PostgreSQL recovery target name."
+    echo "We cannot determine exactly which backup contains this restore point."
+    echo "Restoring the earliest available backup and leaving PITR to PostgreSQL."
+
     RESTORETARGET=$(earliest_backup)
-    RESTORETARGETNAME=${RESTORETARGETINPUT}
+    RESTORETARGETNAME="$RESTORETARGETINPUT"
+
   fi
 fi
 
-echo "Fetching backup from $RESTORETARGET"
-/usr/local/bin/wal-g-pg backup-fetch "$PGRESTORE" "$RESTORETARGET"
-chmod 0700 "$PGRESTORE"
-
-if [ "$PGRESTORE" != "$PGDATA" ]; then
-  echo -e "port=5433\narchive_command = '/bin/true'" >> "$PGRESTORE/postgresql.conf"
+if [ -z "$RESTORETARGET" ]; then
+  echo "Could not determine a WAL-G backup to restore." >&2
+  exit 1
 fi
 
-PGVERSION=$(cat "$PGDATA/PG_VERSION")
-if [ "0$PGVERSION" -ge 12  ]; then
+echo "Fetching backup $RESTORETARGET into $PGRESTORE"
+
+/usr/local/bin/wal-g-pg backup-fetch \
+  "$PGRESTORE" \
+  "$RESTORETARGET"
+
+chmod 0700 "$PGRESTORE"
+
+#
+# If we're restoring somewhere other than the cluster's normal PGDATA,
+# make sure the restored PostgreSQL instance cannot conflict with the
+# running Stolon instance and doesn't archive WAL back into the repository.
+#
+if [ "$PGRESTORE" != "$PGDATA" ]; then
+  {
+    echo
+    echo "# Added by WAL-G restore.sh"
+    echo "port = $PGRESTOREPORT"
+    echo "archive_command = '/bin/true'"
+  } >> "$PGRESTORE/postgresql.conf"
+fi
+
+#
+# Determine PostgreSQL version from the restored backup itself.
+#
+PGVERSION=$(cat "$PGRESTORE/PG_VERSION")
+
+if [ "$PGVERSION" -ge 12 ]; then
   touch "$PGRESTORE/recovery.signal"
   recovery_conf >> "$PGRESTORE/postgresql.conf"
 else
   recovery_conf >> "$PGRESTORE/recovery.conf"
 fi
+
+echo "Starting restored PostgreSQL instance from $PGRESTORE"
 
 "$PGBIN/pg_ctl" start -D "$PGRESTORE"

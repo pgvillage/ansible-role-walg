@@ -12,18 +12,26 @@ function backup() {
     return 0
   fi
   
-  "$SCRIPTDIR/maintenance.sh"
+  "$SCRIPTDIR/maintenance.sh" "$CLUSTER"
   
   echo "Pushing backup"
   /usr/local/bin/wal-g-pg backup-push "${PGDATA}"
   
-  "$SCRIPTDIR/maintenance.sh"
+  "$SCRIPTDIR/maintenance.sh" "$CLUSTER"
 }
 
 SCRIPTDIR=$(dirname $0)
 
 # WAL-g config laden
-eval "$(sed '/#/d;s/^/export /' /etc/default/wal-g)"
+CLUSTER="${1:?Cluster name required}"
+CONFIG="/etc/default/wal-g-${CLUSTER}"
+
+if [ ! -r "$CONFIG" ]; then
+    echo "WAL-G configuration not found: $CONFIG" >&2
+    exit 1
+fi
+
+eval "$(sed '/#/d;s/^/export /' "$CONFIG")"
 
 # log output to a logfile in the logdir
 WALG_LOG_FOLDER=${WALG_LOG_FOLDER:-/var/log/wal-g}

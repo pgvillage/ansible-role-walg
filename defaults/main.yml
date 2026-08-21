@@ -35,8 +35,6 @@ walg_cron_path: "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin"
 walg_cronvars:
   - name: MAILTO
     value: "{{ walg_cron_mailto }}"
-  - name: LOGFILE
-    value: "{{ walg_logfolder }}"
   - name: PATH
     value: "{{ walg_cron_path }}"
 
@@ -70,10 +68,12 @@ walg_pg_datadir: "/var/lib/pgsql/12/data"
 walg_pg_bindir: "/usr/pgsql/12/bin"
 walg_pg_hostname: "/var/run/postgresql"
 walg_pg_password: postgres_password
+walg_pg_port: 5432
 walg_postgresql_defaults:
   PGDATA: "{{ walg_pg_datadir }}"
   PGBIN: "{{ walg_pg_bindir }}"
   PGHOST: "{{ walg_pg_hostname }}"
+  PGPORT: "{{ walg_pg_port }}"
   PGPASSWORD: "{{ walg_pg_password }}"
 
 walg_delta_max_steps: 7
@@ -136,3 +136,14 @@ walg_cert_files:
     # body: "{{ walg_bucket_cert }}"
     src: "{{ walg_bucket_src }}"
     owner: "{{ walg_user }}"
+
+walg_clusters:
+  default:
+    pg_datadir: "{{ walg_pg_datadir }}"
+    pg_port: "{{ walg_pg_port }}"
+    s3_prefix: "s3://{{ walg_bucket_name }}"
+    logfolder: "{{ walg_logfolder }}"
+    cron:
+      enabled: "{{ walg_cron_enabled }}"
+      minute: "{{ walg_cron_minute }}"
+      hour: "{{ walg_cron_hour }}"

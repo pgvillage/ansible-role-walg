@@ -13,13 +13,22 @@ function sleep_if_primary() {
 
 function run_locked_backup() {
 	sleep_if_primary
-	/usr/bin/etcdctl lock wal-g "$SCRIPTDIR/backup.sh"
+	/usr/bin/etcdctl lock "wal-g-${CLUSTER}" \
+    "$SCRIPTDIR/backup.sh ${CLUSTER}"
 }
 
 SCRIPTDIR=$(dirname $0)
 
 # WAL-g config laden
-eval "$(sed '/#/d;s/^/export /' /etc/default/wal-g)"
+CLUSTER="${1:?Cluster name required}"
+CONFIG="/etc/default/wal-g-${CLUSTER}"
+
+if [ ! -r "$CONFIG" ]; then
+    echo "WAL-G configuration not found: $CONFIG" >&2
+    exit 1
+fi
+
+eval "$(sed '/#/d;s/^/export /' "$CONFIG")"
 
 # log output to a logfile in the logdir
 WALG_LOG_FOLDER=${WALG_LOG_FOLDER:-/var/log/wal-g}

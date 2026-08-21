@@ -1,6 +1,10 @@
 #!/bin/bash
+set -e
 
-# WAL-g config laden
-eval "$(sed '/#/d;s/^/export /' /etc/default/wal-g)"
+CLUSTER="${1:?Cluster name required}"
+WAL_PATH="${2:?WAL path required}"
 
-/usr/local/bin/wal-g-pg wal-push "$1"
+CONFIG="/etc/default/wal-g-${CLUSTER}"
+eval "$(sed '/#/d;s/^/export /' "$CONFIG")"
+
+/usr/local/bin/wal-g-pg wal-push "$WAL_PATH"
