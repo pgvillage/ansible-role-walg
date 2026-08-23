@@ -13,8 +13,8 @@ function sleep_if_primary() {
 
 function run_locked_backup() {
 	sleep_if_primary
-	/usr/bin/etcdctl lock "wal-g-${CLUSTER}" \
-    "$SCRIPTDIR/backup.sh ${CLUSTER}"
+	etcdctl lock "wal-g-${CLUSTER}" \
+    "$SCRIPTDIR/backup.sh" "${CLUSTER}"
 }
 
 SCRIPTDIR=$(dirname "$0")
