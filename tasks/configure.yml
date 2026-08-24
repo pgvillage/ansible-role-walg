@@ -1,56 +1,69 @@
----
-- name: Create logfolder
+- name: Create WAL-G log folder
   ansible.builtin.file:
-    dest: "{{ walg_logfolder }}"
+    dest: "{{ walg_cluster.value.logfolder }}"
     state: directory
     owner: "{{ walg_user }}"
     group: "{{ walg_group }}"
     mode: "0755"
 
-- name: Install defaults configuration
-  become: true
-  become_user: root
+- name: Install WAL-G cluster configuration
   ansible.builtin.template:
-    src: "wal-g.default.j2"
-    dest: "/etc/default/wal-g"
-    owner: "root"
-    group: "root"
+    src: wal-g.default.j2
+    dest: "/etc/default/wal-g-{{ walg_cluster.key }}"
+    owner: root
+    group: root
     mode: "0644"
+  vars:
+    walg_cluster_defaults: >-
+      {{
+        walg_bucket_defaults |
+        combine({
+          'WALG_S3_PREFIX':
+            walg_cluster.value.s3_prefix |
+            default('s3://' ~ walg_bucket_name)
+        }) |
+        combine({
+          'PGDATA':
+            walg_cluster.value.pg_datadir |
+            default(walg_pg_datadir),
+          'PGBIN':
+            walg_cluster.value.pg_bindir |
+            default(walg_pg_bindir),
+          'PGHOST':
+            walg_cluster.value.pg_hostname |
+            default(walg_pg_hostname),
+          'PGPORT':
+            walg_cluster.value.pg_port |
+            default(walg_pg_port),
+          'PGPASSWORD':
+            walg_cluster.value.pg_password |
+            default(walg_pg_password)
+        }) |
+        combine(walg_generic_defaults) |
+        combine(walg_retention_defaults) |
+        combine(walg_log_defaults) |
+        combine({
+          'WALG_LOG_FOLDER':
+            walg_cluster.value.logfolder |
+            default(walg_logfolder),
+          'WALG_CLUSTER_NAME': walg_cluster.key
+        })
+      }}
 
-- name: Cronjob for creating a backup.
+- name: Configure WAL-G backup cron
   ansible.builtin.cron:
-    name: "backup"
-    minute: "{{ walg_cron_minute }}"
-    hour: "{{ walg_cron_hour }}"
-    dom: "{{ walg_cron_dom }}"
-    dow: "{{ walg_cron_dow }}"
-    month: "{{ walg_cron_month }}"
-    job: "{{ walg_cron_command }}"
+    name: "wal-g backup {{ walg_cluster.key }}"
+    minute: "{{ (walg_cluster.value.cron | default({})).minute | default(walg_cron_minute) }}"
+    hour: "{{ (walg_cluster.value.cron | default({})).hour | default(walg_cron_hour) }}"
+    dom: "{{ (walg_cluster.value.cron | default({})).dom | default(walg_cron_dom) }}"
+    dow: "{{ (walg_cluster.value.cron | default({})).dow | default(walg_cron_dow) }}"
+    month: "{{ (walg_cluster.value.cron | default({})).month | default(walg_cron_month) }}"
+    job: "{{ walg_cron_command }} {{ walg_cluster.key }}"
     user: "{{ walg_user }}"
     cron_file: wal-g
-  when: walg_cron_enabled
-
-- name: Set cronvars
-  community.general.cronvar:
-    name: "{{ item.name }}"
-    value: "{{ item.value }}"
-    cron_file: wal-g
-  loop: "{{ walg_cronvars }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: walg_cron_enabled
-
-- name: Copy scripts folder
-  ansible.builtin.copy:
-    src: scripts
-    dest: "{{ walg_home }}"
-    owner: "root"
-    group: "root"
-    mode: "0755"
-
-- name: Enable walg_profile
-  ansible.builtin.lineinfile:
-    path: "{{ getent_passwd[walg_user][4] }}/.pgsql_profile"
-    line: "source {{ walg_home }}/scripts/walg_profile"
-    create: "true"
-    mode: "0700"
+    state: >-
+      {{
+        'present'
+        if (walg_cluster.value.cron | default({})).enabled | default(walg_cron_enabled)
+        else 'absent'
+      }}

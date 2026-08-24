@@ -1,3 +1,24 @@
-eval "$(sed '/#/d;s/^/export /' /etc/default/wal-g)"
-export PATH=$PATH:/usr/local/bin
+walg_cluster() {
+    local cluster="$1"
+    local config="/etc/default/wal-g-${cluster}"
+
+    if [ -z "$cluster" ]; then
+        echo "Usage: walg_cluster <cluster>"
+        return 1
+    fi
+
+    if [ ! -r "$config" ]; then
+        echo "WAL-G configuration not found: $config"
+        return 1
+    fi
+
+    eval "$(sed '/#/d;s/^/export /' "$config")"
+
+    echo "WAL-G environment selected: $cluster"
+    echo "PGDATA=$PGDATA"
+    echo "PGPORT=$PGPORT"
+    echo "WALG_S3_PREFIX=$WALG_S3_PREFIX"
+}
+
+export PATH="$PATH:/usr/local/bin"
 alias wal-g=wal-g-pg

@@ -1,15 +1,59 @@
----
 - name: Get user info
   ansible.builtin.getent:
     database: passwd
     key: "{{ walg_user }}"
     split: ":"
 
-# tasks file for wal-g
 - name: Install
   ansible.builtin.include_tasks: install.yml
   when: walg_release | length > 0
+
 - name: Deploy certs
   ansible.builtin.include_tasks: certs.yml
-- name: Configure
+
+- name: Set WAL-G cron variables
+  community.general.cronvar:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    cron_file: wal-g
+  loop: "{{ walg_cronvars }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: walg_cron_enabled
+
+- name: Copy scripts folder
+  ansible.builtin.copy:
+    src: scripts
+    dest: "{{ walg_home }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy scripts folder
+  ansible.builtin.copy:
+    src: scripts
+    dest: "{{ walg_home }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enable walg_profile
+  ansible.builtin.lineinfile:
+    path: "{{ getent_passwd[walg_user][4] }}/.pgsql_profile"
+    line: "source {{ walg_home }}/scripts/walg_profile"
+    create: true
+    owner: "{{ walg_user }}"
+    group: "{{ walg_group }}"
+    mode: "0700"
+
+- name: Configure WAL-G clusters
   ansible.builtin.include_tasks: configure.yml
+  loop: "{{ walg_clusters | dict2items }}"
+  loop_control:
+    loop_var: walg_cluster
+    label: "{{ walg_cluster.key }}"
+
+- name: Remove obsolete single-cluster WAL-G configuration
+  ansible.builtin.file:
+    path: /etc/default/wal-g
+    state: absent

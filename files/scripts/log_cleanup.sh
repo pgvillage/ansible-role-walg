@@ -6,15 +6,24 @@ function log_cleanup() {
   find "$WALG_LOG_FOLDER" -mtime "+$WALG_LOG_RETENTION_DAYS" -delete
   
   echo "Zipping all non-gzip files in '$WALG_LOG_FOLDER' older than $WALG_LOG_ZIP_DAYS days."
-  find "$WALG_LOG_FOLDER" -mtime "+$WALG_LOG_ZIP_DAYS" | while read f; do
-    [[ "$f" =~ .*\.gz ]] && continue
-    echo "gzip $f"
-    gzip $f
-  done
+  find "$WALG_LOG_FOLDER" -type f -mtime "+$WALG_LOG_ZIP_DAYS" -print0 |
+    while IFS= read -r -d '' f; do
+      [[ "$f" == *.gz ]] && continue
+      echo "gzip $f"
+      gzip "$f"
+    done
 }
 
 # WAL-g config laden
-eval "$(sed '/#/d;s/^/export /' /etc/default/wal-g)"
+CLUSTER="${1:?Cluster name required}"
+CONFIG="/etc/default/wal-g-${CLUSTER}"
+
+if [ ! -r "$CONFIG" ]; then
+    echo "WAL-G configuration not found: $CONFIG" >&2
+    exit 1
+fi
+
+eval "$(sed '/#/d;s/^/export /' "$CONFIG")"
 
 # log output to a logfile in the logdir
 WALG_LOG_FOLDER=${WALG_LOG_FOLDER:-/var/log/wal-g}
