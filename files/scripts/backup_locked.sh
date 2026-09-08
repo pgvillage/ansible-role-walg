@@ -3,7 +3,7 @@ set -e
 
 function sleep_if_primary() {
 	DELAY=${1:-10}
-	PGROLE=$(psql -tc "select case when pg_is_in_recovery() then 'standby' else 'primary' end;" | xargs)
+	PGROLE=$("${PGBIN}/psql" -tc "select case when pg_is_in_recovery() then 'standby' else 'primary' end;" | xargs)
 	echo "Postgres role is ${PGROLE}"
 	if [ "$PGROLE" = 'primary' ]; then
 		echo "Running on a primary. Sleep 10 seconds to give standbys the upper hand."
