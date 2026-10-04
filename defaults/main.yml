@@ -2,14 +2,9 @@
 # defaults file for wal-g
 walg_release: "1.1"
 walg_home: "/opt/wal-g"
-walg_bin_path: "{{ walg_home }}/{{ walg_release }}/"
 walg_user: postgres
 walg_group: postgres
 walg_binary_owner: root
-walg_pkg_arch: amd64
-walg_distribution: "wal-g-pg-ubuntu-18.04"
-walg_exe_name: "{{ walg_distribution }}-{{ walg_pkg_arch }}"
-walg_exe_url: "https://github.com/wal-g/wal-g/releases/download/v{{ walg_release }}/{{ walg_exe_name }}"
 # If you add items to walg_packages, the binary will not be downloaded, but installed from packages instead
 walg_package_state: present
 walg_packages:
@@ -19,7 +14,6 @@ walg_packages:
 walg_cron_enabled: true
 walg_cron_minute: "0"
 walg_cron_hour: "20"
-walg_cron_day_ot_month: "*"
 walg_cron_dom: "*"
 walg_cron_dow: "*"
 walg_cron_month: "*"
@@ -37,18 +31,6 @@ walg_cronvars:
     value: "{{ walg_cron_mailto }}"
   - name: PATH
     value: "{{ walg_cron_path }}"
-
-# Below map is derived from above parameters and is one-on-one converted into a defaults file in /etc/defaults/walg
-# which is sourced by all the scripts.
-# Usually one would just change the above parameters, but for some situations, one might change the entire maps (like when google buckets would be used).
-walg_defaults: |
-  {{
-    walg_bucket_defaults |
-    combine(walg_postgresql_defaults) |
-    combine(walg_generic_defaults) |
-    combine(walg_retention_defaults) |
-    combine(walg_log_defaults)
-  }}
 
 # Set to correct values!!!
 walg_aws_access_key: "AWSKEY"
@@ -69,12 +51,6 @@ walg_pg_bindir: "/usr/pgsql/12/bin"
 walg_pg_hostname: "/var/run/postgresql"
 walg_pg_password: postgres_password
 walg_pg_port: 5432
-walg_postgresql_defaults:
-  PGDATA: "{{ walg_pg_datadir }}"
-  PGBIN: "{{ walg_pg_bindir }}"
-  PGHOST: "{{ walg_pg_hostname }}"
-  PGPORT: "{{ walg_pg_port }}"
-  PGPASSWORD: "{{ walg_pg_password }}"
 
 walg_delta_max_steps: 7
 walg_download_concurrency: 2
