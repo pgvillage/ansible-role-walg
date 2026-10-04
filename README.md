@@ -13,7 +13,8 @@ This role aims at using an RPM from the MannemSolutions repo.
 Role Variables
 --------------
 
-Please see [defaults](https://github.com/pgvillage/ansible-role-walg/blob/main/defaults/main.yml) for all variables
+Please see the [API docs](docs/api.md) for a description of all variables.
+The defaults can be found in [defaults/main.yml](defaults/main.yml).
 
 
 Dependencies
