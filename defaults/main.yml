@@ -1,43 +1,79 @@
 ---
 # defaults file for wal-g
+
+# ------------------------------------------------------------------------------
+# Installation
+# ------------------------------------------------------------------------------
+
+# wal-g release. The install tasks (folder creation and package installation)
+# only run when this is a non-empty string; set to "" to skip installation.
 walg_release: "1.1"
+# Base folder for wal-g. The helper scripts are deployed into `{{ walg_home }}/scripts`.
 walg_home: "/opt/wal-g"
+# OS user that runs wal-g (owns the cron jobs, log folder, certificates and shell profile).
 walg_user: postgres
+# OS group of `walg_user`, used for the log folder and shell profile.
 walg_group: postgres
+# Owner of `walg_home`.
 walg_binary_owner: root
-# If you add items to walg_packages, the binary will not be downloaded, but installed from packages instead
+# State passed to the package module for `walg_packages` (e.g. present, latest, absent).
 walg_package_state: present
+# List of OS packages that provide wal-g (the scripts call `/usr/local/bin/wal-g-pg`).
+# When empty, installation is only allowed on x86_64 and aarch64.
 walg_packages:
   - wal-g-pg
 
-# wal-g scheduling with cron
-walg_cron_enabled: true
-walg_cron_minute: "0"
-walg_cron_hour: "20"
-walg_cron_dom: "*"
-walg_cron_dow: "*"
-walg_cron_month: "*"
-# By using `etcdctl lock`, we enforce backup to run on only ones (on a node) at a time.
-# The backup script sleeps for 10 seconds if this is a primary node, so standbys will have preference.
-# The backup script has a protection against running multiple backups per {{ walg_backup_skip_window }}.
-# So, iin short: only one backup will be taken every {{ walg_backup_skip_window }} hours,
-# and it will be taken from a standby unless only the master is available...
-walg_cron_command: "{{ walg_home }}/scripts/backup_locked.sh"
-walg_cron_mailto: "{{ walg_user }}@{{ inventory_hostname }}"
-walg_cron_path: "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin"
+# ------------------------------------------------------------------------------
+# Backup scheduling (cron)
+# ------------------------------------------------------------------------------
 
+# Enable the backup cron job (default for all clusters, can be overridden per cluster
+# in `walg_clusters`). Also controls whether `walg_cronvars` are set in the cron file.
+walg_cron_enabled: true
+# Cron minute of the backup job (default for all clusters).
+walg_cron_minute: "0"
+# Cron hour of the backup job (default for all clusters).
+walg_cron_hour: "20"
+# Cron day-of-month of the backup job (default for all clusters).
+walg_cron_dom: "*"
+# Cron day-of-week of the backup job (default for all clusters).
+walg_cron_dow: "*"
+# Cron month of the backup job (default for all clusters).
+walg_cron_month: "*"
+# Command run by cron. The cluster name is appended as argument.
+# By using `etcdctl lock`, backup_locked.sh enforces that only one backup per cluster runs at a time (across nodes).
+# The backup script sleeps for 10 seconds if this is a primary node, so standbys will have preference.
+# The backup script skips the backup when a backup was taken within the last `walg_backup_skip_window` hours.
+# So, in short: only one backup will be taken every `walg_backup_skip_window` hours,
+# and it will be taken from a standby unless only the primary is available.
+walg_cron_command: "{{ walg_home }}/scripts/backup_locked.sh"
+# Mail address that receives cron output (MAILTO), i.e. failed backups.
+walg_cron_mailto: "{{ walg_user }}@{{ inventory_hostname }}"
+# PATH used by the cron jobs (must contain `etcdctl` and the wal-g binary).
+walg_cron_path: "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin"
+# Environment variables (list of name / value) set in the `wal-g` cron file.
 walg_cronvars:
   - name: MAILTO
     value: "{{ walg_cron_mailto }}"
   - name: PATH
     value: "{{ walg_cron_path }}"
 
-# Set to correct values!!!
+# ------------------------------------------------------------------------------
+# S3 bucket
+# ------------------------------------------------------------------------------
+
+# S3 access key. Set to the correct value (preferably from a vault)!
 walg_aws_access_key: "AWSKEY"
+# S3 secret key. Set to the correct value (preferably from a vault)!
 walg_aws_secret_key: "AWSSECRET"
+# S3 endpoint URL. Set to the correct value!
 walg_aws_endpoint: "https://{{ walg_bucket_name }}.s3.Region.amazonaws.com/{{ walg_aws_access_key }}"
+# CA certificate used to verify the S3 endpoint (see `walg_cert_files`).
 walg_aws_ca_file: ~/.wal-g/certs/minio.crt
+# Name of the S3 bucket. Used for the default `WALG_S3_PREFIX` (s3://<bucket>).
 walg_bucket_name: backup
+# S3 related environment variables written to `/etc/default/wal-g-<cluster>`.
+# `WALG_S3_PREFIX` is overridden per cluster by `walg_clusters.<cluster>.s3_prefix`.
 walg_bucket_defaults:
   AWS_ACCESS_KEY_ID: "{{ walg_aws_access_key }}"
   AWS_SECRET_ACCESS_KEY: "{{ walg_aws_secret_key }}"
@@ -46,73 +82,115 @@ walg_bucket_defaults:
   WALG_S3_PREFIX: "s3://{{ walg_bucket_name }}"
   WALG_S3_CA_CERT_FILE: "{{ walg_aws_ca_file }}"
 
+# ------------------------------------------------------------------------------
+# PostgreSQL connection (defaults for all clusters, can be overridden per cluster)
+# ------------------------------------------------------------------------------
+
+# PostgreSQL data directory (PGDATA).
 walg_pg_datadir: "/var/lib/pgsql/12/data"
+# PostgreSQL binaries folder (PGBIN), used for `psql` and `pg_ctl` in the scripts.
 walg_pg_bindir: "/usr/pgsql/12/bin"
+# PostgreSQL host or unix socket directory (PGHOST).
 walg_pg_hostname: "/var/run/postgresql"
+# PostgreSQL password (PGPASSWORD). Note: values containing a `#` are dropped when the scripts load the config.
 walg_pg_password: postgres_password
+# PostgreSQL port (PGPORT).
 walg_pg_port: 5432
 
+# ------------------------------------------------------------------------------
+# wal-g tuning
+# ------------------------------------------------------------------------------
+
+# Maximum number of delta backups between full backups (WALG_DELTA_MAX_STEPS).
 walg_delta_max_steps: 7
+# Number of parallel downloads (WALG_DOWNLOAD_CONCURRENCY).
 walg_download_concurrency: 2
+# Number of parallel uploads (WALG_UPLOAD_CONCURRENCY).
 walg_upload_concurrency: 2
+# Number of parallel disk reads during upload (WALG_UPLOAD_DISK_CONCURRENCY).
 walg_upload_disk_concurrency: 2
+# Compression method (WALG_COMPRESSION_METHOD), e.g. lz4, lzma, zstd or brotli.
 walg_compression_method: lz4
+# Generic wal-g environment variables written to `/etc/default/wal-g-<cluster>`.
 walg_generic_defaults:
   WALG_DELTA_MAX_STEPS: "{{ walg_delta_max_steps }}"
   WALG_DOWNLOAD_CONCURRENCY: "{{ walg_download_concurrency }}"
   WALG_UPLOAD_CONCURRENCY: "{{ walg_upload_concurrency }}"
   WALG_UPLOAD_DISK_CONCURRENCY: "{{ walg_upload_disk_concurrency }}"
-  # specify encrytpion algoritm
   WALG_COMPRESSION_METHOD: "{{ walg_compression_method }}"
 
-# SKip backup when there are backups your than 23 hours:
+# ------------------------------------------------------------------------------
+# Backup retention
+# ------------------------------------------------------------------------------
+
+# Skip a backup when there is already a backup younger than this number of hours.
 walg_backup_skip_window: 23
-# Keep  days of backups
+# Keep backups of the last <n> days. Takes precedence over the other retention settings.
 walg_retention_days: 7
-# Keep 1 full backup and all of its delta backups (only when WALG_RETENTION_DAYS not set)
+# Keep <n> full backups and all of their delta backups (only used when `walg_retention_days` is empty).
 walg_retention_full_backups: ""
-# Keep 7 backups, either full or differential (only when WALG_RETENTION_DAYS and WALG_RETENTION_FULL_BACKUPS not set)
+# Keep <n> backups, either full or delta (only used when `walg_retention_days`
+# and `walg_retention_full_backups` are empty).
 walg_retention_backups: ""
+# Retention environment variables written to `/etc/default/wal-g-<cluster>` (used by backup.sh and delete.sh).
 walg_retention_defaults:
   WALG_BACKUP_SKIP_WINDOW: "{{ walg_backup_skip_window }}"
   WALG_RETENTION_DAYS: "{{ walg_retention_days }}"
-  # Keep 1 full backup and all of its delta backups (only when WALG_RETENTION_DAYS not set)
   WALG_RETENTION_FULL_BACKUPS: "{{ walg_retention_full_backups }}"
-  # Keep 7 backups, either full or differential (only when WALG_RETENTION_DAYS and WALG_RETENTION_FULL_BACKUPS not set)
   WALG_RETENTION_BACKUPS: "{{ walg_retention_backups }}"
 
+# ------------------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------------------
+
+# Delete script log files older than <n> days (used by log_cleanup.sh).
 walg_log_retention_days: "{{ walg_retention_days }}"
+# Gzip script log files older than <n> days (used by log_cleanup.sh).
 walg_log_zip_days: 2
+# Folder for the script log files (default for all clusters, can be overridden per cluster).
 walg_logfolder: "/var/log/wal-g"
-# Set to DEVEL for extra logging from wal-g
+# wal-g log level (WALG_LOG_LEVEL). Set to DEVEL for extra logging from wal-g.
 walg_log_level: NORMAL
-# Set to DEVEL for extra logging in S3 communication
+# S3 log level (S3_LOG_LEVEL). Set to DEVEL for extra logging in S3 communication.
 walg_s3_log_level: NORMAL
+# Logging environment variables written to `/etc/default/wal-g-<cluster>`.
 walg_log_defaults:
-  # Logging settings
   WALG_LOG_RETENTION_DAYS: "{{ walg_log_retention_days }}"
   WALG_LOG_ZIP_DAYS: "{{ walg_log_zip_days }}"
   WALG_LOG_FOLDER: "{{ walg_logfolder }}"
-  # use for extra logging from wal-g
   WALG_LOG_LEVEL: "{{ walg_log_level }}"
-  # use for extra logging in S3 communication
   S3_LOG_LEVEL: "{{ walg_s3_log_level }}"
 
+# ------------------------------------------------------------------------------
+# Certificates
+# ------------------------------------------------------------------------------
+
+# Folders to create for certificates (dict of name -> path / owner), created with mode 0700.
 walg_cert_folders:
   minio:
     path: "{{ getent_passwd[walg_user][4] }}/.wal-g/certs"
     owner: "{{ walg_user }}"
 
-# walg_bucket_cert: "---- CERT ----"
+# Source file (in the playbook's files lookup path) of the CA certificate of the S3 endpoint.
 walg_bucket_src: "walg_bucket_root.crt"
 
+# Certificate files to deploy (dict of name -> path / src / owner), deployed with mode 0600.
+# `owner` defaults to root.
 walg_cert_files:
   minio_chain:
     path: "{{ walg_cert_folders.minio.path }}/minio.crt"
-    # body: "{{ walg_bucket_cert }}"
     src: "{{ walg_bucket_src }}"
     owner: "{{ walg_user }}"
 
+# ------------------------------------------------------------------------------
+# Clusters
+# ------------------------------------------------------------------------------
+
+# PostgreSQL clusters to back up (dict of cluster name -> settings).
+# For every cluster, a config file `/etc/default/wal-g-<cluster>` and a backup cron job are created.
+# Supported keys (all optional, falling back to the global defaults):
+#   pg_datadir, pg_bindir, pg_hostname, pg_port, pg_password, s3_prefix, logfolder,
+#   cron: { enabled, minute, hour, dom, dow, month }
 walg_clusters:
   default:
     pg_datadir: "{{ walg_pg_datadir }}"
