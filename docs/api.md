@@ -25,7 +25,7 @@ by merging these maps (later maps win):
 | `walg_group` | `postgres` | OS group of `walg_user`, used for the log folder and shell profile. |
 | `walg_binary_owner` | `root` | Owner of `walg_home`. |
 | `walg_package_state` | `present` | State passed to the package module for `walg_packages` (e.g. `present`, `latest`, `absent`). |
-| `walg_packages` | `[wal-g-pg]` | OS packages that provide wal-g (the scripts call `/usr/local/bin/wal-g-pg`). When empty, installation is only allowed on x86_64 and aarch64. |
+| `walg_packages` | `[wal-g-pg]` | OS packages that provide wal-g (the scripts call `/usr/bin/wal-g-pg`). When empty, installation is only allowed on x86_64 and aarch64. |
 
 ## Backup scheduling (cron)
 

@@ -15,4 +15,4 @@ fi
 
 eval "$(sed '/#/d;s/^/export /' "$CONFIG")"
 
-/usr/local/bin/wal-g-pg wal-push "$WAL_PATH"
+/usr/bin/wal-g-pg wal-push "$WAL_PATH"

@@ -4,11 +4,11 @@ set -e
 function list_backups() {
 	echo "BACKUP:"
 	echo "======="
-	/usr/local/bin/wal-g-pg backup-list
+	/usr/bin/wal-g-pg backup-list
 	echo
 	echo "WAL:"
 	echo "===="
-	/usr/local/bin/wal-g-pg wal-show
+	/usr/bin/wal-g-pg wal-show
 }
 
 SCRIPTDIR=$(dirname "$0")
