@@ -15,11 +15,11 @@ recovery_conf() {
 }
 
 earliest_backup() {
-  /usr/local/bin/wal-g-pg backup-list | sed -n '2{s/ .*//;p}'
+  /usr/bin/wal-g-pg backup-list | sed -n '2{s/ .*//;p}'
 }
 
 latest_backup_before() {
-  /usr/local/bin/wal-g-pg backup-list |
+  /usr/bin/wal-g-pg backup-list |
     awk -v RestoreDate="$1" \
       '{if (FNR > 1 && $2 <= RestoreDate) {print $1}}' |
     tail -n1
@@ -27,7 +27,7 @@ latest_backup_before() {
 
 latest_backup() {
   # shellcheck disable=SC2016
-  /usr/local/bin/wal-g-pg backup-list | sed -n '${s/ .*//;p}'
+  /usr/bin/wal-g-pg backup-list | sed -n '${s/ .*//;p}'
 }
 
 #
@@ -133,7 +133,7 @@ fi
 
 echo "Fetching backup $RESTORETARGET into $PGRESTORE"
 
-/usr/local/bin/wal-g-pg backup-fetch \
+/usr/bin/wal-g-pg backup-fetch \
   "$PGRESTORE" \
   "$RESTORETARGET"
 

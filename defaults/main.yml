@@ -18,7 +18,7 @@ walg_group: postgres
 walg_binary_owner: root
 # State passed to the package module for `walg_packages` (e.g. present, latest, absent).
 walg_package_state: present
-# List of OS packages that provide wal-g (the scripts call `/usr/local/bin/wal-g-pg`).
+# List of OS packages that provide wal-g (the scripts call `/usr/bin/wal-g-pg`).
 # When empty, installation is only allowed on x86_64 and aarch64.
 walg_packages:
   - wal-g-pg

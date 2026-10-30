@@ -7,9 +7,9 @@ function delete_backups() {
     # Wat was de datum
     BEFORE=$(date --date="${WALG_RETENTION_DAYS} days ago" --iso-8601)"T00:00:00Z"
     echo "Cleaning all backups before ${BEFORE}"
-    /usr/local/bin/wal-g-pg delete before FIND_FULL "${BEFORE}" --confirm
+    /usr/bin/wal-g-pg delete before FIND_FULL "${BEFORE}" --confirm
   elif [ "${WALG_RETENTION_FULL_BACKUPS}" ]; then
-    BACKUPS=$(/usr/local/bin/wal-g-pg backup-list | awk '$1!~/_D_/&&$1~/^base/{print $1}')
+    BACKUPS=$(/usr/bin/wal-g-pg backup-list | awk '$1!~/_D_/&&$1~/^base/{print $1}')
     NUMBACKUPS=$(echo "${BACKUPS}" | wc -w)
     if [ "${NUMBACKUPS}" -le  "${WALG_RETENTION_FULL_BACKUPS}" ]; then
       echo "Nothing to do. Want to retain ${WALG_RETENTION_FULL_BACKUPS} full backups and there are only ${NUMBACKUPS}."
@@ -22,7 +22,7 @@ function delete_backups() {
         head -n1
     )
   elif [ "${WALG_RETENTION_BACKUPS}" ]; then
-    BACKUPS=$(/usr/local/bin/wal-g-pg backup-list | awk '$1~/^base/{print $1}')
+    BACKUPS=$(/usr/bin/wal-g-pg backup-list | awk '$1~/^base/{print $1}')
     NUMBACKUPS=$(echo "${BACKUPS}" | wc -w)
     if [ "${NUMBACKUPS}" -le  "${WALG_RETENTION_BACKUPS}" ]; then
       echo "Nothing to do. Want to retain ${WALG_RETENTION_BACKUPS} backups and there are only ${NUMBACKUPS}."
@@ -30,7 +30,7 @@ function delete_backups() {
     fi
     FIRSTTOKEEP=$(echo "${BACKUPS}" | xargs -n1 | tail -n "${WALG_RETENTION_FULL}" | head -n1)
     echo "Cleaning all backups before ${FIRSTTOKEEP}"
-    /usr/local/bin/wal-g-pg delete before FIND_FULL "${FIRSTTOKEEP}" --confirm
+    /usr/bin/wal-g-pg delete before FIND_FULL "${FIRSTTOKEEP}" --confirm
   else
     echo 'Nothing to do. WALG_RETENTION_DAYS, WALG_RETENTION_FULL_BACKUPS, and WALG_RETENTION_BACKUPS are all not set.'
     return 1
