@@ -19,7 +19,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.13'  # ansible-core doesn't support 3.15 ('3.x') yet
 
       # Stap 3: Ansible installeren via pip
       - name: Install Ansible
