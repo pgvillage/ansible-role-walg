@@ -19,5 +19,7 @@
         pg_datadir: /var/lib/pgsql/data
         pg_port: 5432
         s3_prefix: s3://backup/molecule
+        # Short, so verify.yml can test it with RustFS stopped
+        archive_timeout: 15
   roles:
     - role: pgvillage.walg

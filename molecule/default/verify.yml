@@ -15,6 +15,7 @@
           - "'PGDATA=/var/lib/pgsql/data' in walg_config"
           - "'WALG_CLUSTER_NAME=molecule' in walg_config"
           - "'WALG_RETENTION_DAYS=7' in walg_config"
+          - "'WALG_ARCHIVE_TIMEOUT=15' in walg_config"
           - "'MAILTO=postgres@' ~ inventory_hostname in cron"
           - "'0 20 * * * postgres /opt/wal-g/scripts/backup_locked.sh molecule' in cron"
         fail_msg: "{{ walg_config + cron }}"
@@ -56,3 +57,60 @@
       ansible.builtin.assert:
         that: "'So I am skipping backup on this node.' in backup_log.stdout"
         fail_msg: "{{ backup_log.stdout }}"
+
+    # archive.sh is the archive_command: with the storage down, wal-push retries
+    # forever, so archive.sh must give up after WALG_ARCHIVE_TIMEOUT (15 s here)
+    - name: Find a WAL file to archive
+      ansible.builtin.shell: >-
+        set -o pipefail &&
+        ls /var/lib/pgsql/data/pg_wal | grep -E '^[0-9A-F]{24}$' | tail -n 1 | sed 's|^|/var/lib/pgsql/data/pg_wal/|'
+      register: wal_file
+      changed_when: false
+      failed_when: wal_file.stdout == ''
+
+    - name: Stop RustFS
+      ansible.builtin.systemd:
+        name: molecule-rustfs
+        state: stopped
+
+    - name: Archive a WAL file with RustFS stopped
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/archive.sh molecule {{ wal_file.stdout }}
+      register: archive_down
+      failed_when: false
+      changed_when: false
+
+    - name: Find wal-push processes left behind
+      ansible.builtin.command: pgrep -f 'wal-g-pg wal-push'
+      register: wal_push_left
+      failed_when: false
+      changed_when: false
+
+    - name: Check archive.sh failed on the timeout, within the timeout, and stopped wal-push
+      ansible.builtin.assert:
+        that:
+          - archive_down.rc == 124
+          - archive_down.delta is regex('^0:00:(1[5-9]|2[0-9])')
+          - wal_push_left.rc == 1
+        fail_msg: "rc {{ archive_down.rc }} after {{ archive_down.delta }}, wal-push left: {{ wal_push_left.stdout }}"
+
+    - name: Start RustFS
+      ansible.builtin.systemd:
+        name: molecule-rustfs
+        state: started
+
+    - name: Wait for RustFS
+      ansible.builtin.wait_for:
+        port: 9000
+        timeout: 30
+
+    - name: Archive the same WAL file with RustFS running
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/archive.sh molecule {{ wal_file.stdout }}
+      register: archive_up
+      retries: 5
+      delay: 2
+      until: archive_up.rc == 0
+      changed_when: true
