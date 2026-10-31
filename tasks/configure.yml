@@ -1,6 +1,6 @@
 - name: Create WAL-G log folder
   ansible.builtin.file:
-    dest: "{{ walg_cluster.value.logfolder }}"
+    dest: "{{ walg_cluster.value.logfolder | default(walg_logfolder) }}"
     state: directory
     owner: "{{ walg_user }}"
     group: "{{ walg_group }}"
