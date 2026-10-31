@@ -46,7 +46,10 @@
           'WALG_LOG_FOLDER':
             walg_cluster.value.logfolder |
             default(walg_logfolder),
-          'WALG_CLUSTER_NAME': walg_cluster.key
+          'WALG_CLUSTER_NAME': walg_cluster.key,
+          'WALG_ARCHIVE_TIMEOUT':
+            walg_cluster.value.archive_timeout |
+            default(walg_archive_timeout)
         })
       }}
 

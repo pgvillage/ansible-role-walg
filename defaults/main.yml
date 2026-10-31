@@ -111,6 +111,10 @@ walg_upload_concurrency: 2
 walg_upload_disk_concurrency: 2
 # Compression method (WALG_COMPRESSION_METHOD), e.g. lz4, lzma, zstd or brotli.
 walg_compression_method: lz4
+# Seconds archive.sh (the archive_command) waits for wal-push before it fails (WALG_ARCHIVE_TIMEOUT; default for all
+# clusters, can be overridden per cluster). wal-push retries forever while the storage is down, and PostgreSQL can't
+# shut down while it waits. Raise it when uploading one WAL file can take longer (slow links).
+walg_archive_timeout: 60
 # Generic wal-g environment variables written to `/etc/default/wal-g-<cluster>`.
 walg_generic_defaults:
   WALG_DELTA_MAX_STEPS: "{{ walg_delta_max_steps }}"
@@ -189,7 +193,7 @@ walg_cert_files:
 # PostgreSQL clusters to back up (dict of cluster name -> settings).
 # For every cluster, a config file `/etc/default/wal-g-<cluster>` and a backup cron job are created.
 # Supported keys (all optional, falling back to the global defaults):
-#   pg_datadir, pg_bindir, pg_hostname, pg_port, pg_password, s3_prefix, logfolder,
+#   pg_datadir, pg_bindir, pg_hostname, pg_port, pg_password, s3_prefix, logfolder, archive_timeout,
 #   cron: { enabled, minute, hour, dom, dow, month }
 walg_clusters:
   default:

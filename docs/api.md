@@ -13,7 +13,7 @@ by merging these maps (later maps win):
 3. [`walg_generic_defaults`](#wal-g-tuning)
 4. [`walg_retention_defaults`](#backup-retention)
 5. [`walg_log_defaults`](#logging) (with `WALG_LOG_FOLDER` taken from the cluster's `logfolder`)
-6. `WALG_CLUSTER_NAME`, set to the cluster name
+6. `WALG_CLUSTER_NAME`, set to the cluster name, and `WALG_ARCHIVE_TIMEOUT` from the cluster's `archive_timeout` (or [`walg_archive_timeout`](#archiving))
 
 ## Installation
 
@@ -99,6 +99,7 @@ These are the defaults for all clusters; each can be overridden per cluster in `
 | `walg_upload_disk_concurrency` | `2` | `WALG_UPLOAD_DISK_CONCURRENCY` | Number of parallel disk reads during upload. |
 | `walg_compression_method` | `lz4` | `WALG_COMPRESSION_METHOD` | Compression method, e.g. `lz4`, `lzma`, `zstd` or `brotli`. |
 | `walg_generic_defaults` | map of the above | | Generic wal-g environment variables written to `/etc/default/wal-g-<cluster>`. |
+| `walg_archive_timeout` | `60` | `WALG_ARCHIVE_TIMEOUT` | Seconds `archive.sh` (the `archive_command`) waits for `wal-push` before it fails; overridable per cluster with `archive_timeout`. See [Archiving](#archiving). |
 
 ## Backup retention
 
@@ -160,6 +161,7 @@ All keys are optional and fall back to the global defaults.
 | `pg_password` | `walg_pg_password` | PostgreSQL password (`PGPASSWORD`). |
 | `s3_prefix` | `s3://{{ walg_bucket_name }}` | S3 prefix for this cluster's backups (`WALG_S3_PREFIX`). |
 | `logfolder` | `walg_logfolder` | Log folder for this cluster (`WALG_LOG_FOLDER`). |
+| `archive_timeout` | `walg_archive_timeout` | Seconds `archive.sh` waits for `wal-push` (`WALG_ARCHIVE_TIMEOUT`). |
 | `cron.enabled` | `walg_cron_enabled` | Enable the backup cron job for this cluster. |
 | `cron.minute` | `walg_cron_minute` | Cron minute. |
 | `cron.hour` | `walg_cron_hour` | Cron hour. |
@@ -203,3 +205,18 @@ walg_clusters:
 
 On the host, select a cluster's environment in a shell with `walg_cluster <cluster>`
 (provided by `walg_profile`, which is sourced from `~walg_user/.pgsql_profile`).
+
+## Archiving
+
+Point the `archive_command` of PostgreSQL to `archive.sh`, with the cluster name and `%p`:
+
+```
+archive_command = '/opt/wal-g/scripts/archive.sh <cluster> %p'
+```
+
+`archive.sh` runs `wal-g wal-push` with a timeout (`walg_archive_timeout`, 60 seconds by default). Without it,
+`wal-push` never ends while the backup storage is down: wal-g keeps retrying the upload. PostgreSQL archives one WAL
+file at a time and can't shut down while its archiver waits, so all later WAL files wait, and a restart (e.g. by
+stolon) hangs. After the timeout, `archive.sh` stops `wal-g` (`SIGTERM`, and `SIGKILL` 10 seconds later) and fails.
+PostgreSQL then keeps the WAL file and archives it again later, as with any failed archive command: no WAL file is
+skipped. Raise the timeout when uploading one WAL file (16 MB) can take longer, e.g. over a slow link.
