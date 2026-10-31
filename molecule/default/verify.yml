@@ -63,7 +63,7 @@
     - name: Find a WAL file to archive
       ansible.builtin.shell: >-
         set -o pipefail &&
-        find /var/lib/pgsql/data/pg_wal -maxdepth 1 -regex '.*/[0-9A-F]\{24\}' | sort | tail -n 1
+        ls /var/lib/pgsql/data/pg_wal | grep -E '^[0-9A-F]{24}$' | tail -n 1 | sed 's|^|/var/lib/pgsql/data/pg_wal/|'
       register: wal_file
       changed_when: false
       failed_when: wal_file.stdout == ''
