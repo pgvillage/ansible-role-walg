@@ -1,0 +1,27 @@
+---
+name: molecule
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+jobs:
+  molecule:
+    name: Molecule
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install molecule
+        run: pip install ansible-core molecule "molecule-plugins[podman]"
+      # Run as root, so podman runs rootful: in rootless containers on Ubuntu
+      # 24.04 runners, sudo inside the container fails in PAM (shadow unreadable)
+      - name: Run molecule test
+        run: sudo --preserve-env=PY_COLORS,ANSIBLE_FORCE_COLOR env "PATH=$PATH" molecule test
+        env:
+          PY_COLORS: "1"
+          ANSIBLE_FORCE_COLOR: "1"

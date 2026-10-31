@@ -1,0 +1,90 @@
+---
+# wal-g backs up a PostgreSQL server to S3. The smallest real setup is the
+# PostgreSQL server from the distribution, and a single RustFS (from the
+# pgvillage package repo) on localhost over http, with a bucket "backup".
+- name: Prepare
+  hosts: all
+  vars:
+    pgvillage_repo: https://repo.pgvillage.org/yum/v0.3.8
+  tasks:
+    - name: Add the pgvillage package repo, so the role installs wal-g-pg by name
+      ansible.builtin.yum_repository:
+        name: pgvillage
+        description: pgvillage packages
+        baseurl: "{{ pgvillage_repo }}/el$releasever/$basearch/"
+        gpgcheck: true
+        gpgkey: https://repo.pgvillage.org/yum/pgvillage.asc
+
+    # cronie: the role schedules the backups in /etc/cron.d
+    - name: Install the PostgreSQL server, RustFS, rc and cron
+      ansible.builtin.dnf:
+        name:
+          - postgresql-server
+          - rustfs
+          - rustfs-cli
+          - cronie
+        state: present
+
+    - name: Initialize the PostgreSQL data directory
+      ansible.builtin.command: postgresql-setup --initdb
+      args:
+        creates: /var/lib/pgsql/data/PG_VERSION
+
+    - name: Start PostgreSQL
+      ansible.builtin.systemd:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Create a unit for a local RustFS
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/molecule-rustfs.service
+        content: |
+          [Service]
+          Type=notify
+          NotifyAccess=main
+          Environment=RUSTFS_VOLUMES=/var/lib/molecule-rustfs
+          Environment=RUSTFS_ADDRESS=127.0.0.1:9000
+          Environment=RUSTFS_ACCESS_KEY=AWSKEY
+          Environment=RUSTFS_SECRET_KEY=AWSSECRET
+          ExecStartPre=/usr/bin/mkdir -p /var/lib/molecule-rustfs
+          ExecStart=/usr/bin/rustfs server
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+
+    - name: Start RustFS
+      ansible.builtin.systemd:
+        name: molecule-rustfs
+        state: started
+        daemon_reload: true
+
+    - name: Create the rc config directory
+      ansible.builtin.file:
+        path: /root/.config/rc
+        state: directory
+        mode: "0700"
+
+    - name: Configure rc for the local RustFS
+      ansible.builtin.copy:
+        dest: /root/.config/rc/config.toml
+        content: |
+          schema_version = 1
+
+          [[aliases]]
+          name = "local"
+          endpoint = "http://127.0.0.1:9000"
+          access_key = "AWSKEY"
+          secret_key = "AWSSECRET"
+          bucket_lookup = "path"
+        mode: "0600"
+
+    - name: Create the bucket for the backups
+      ansible.builtin.command: /usr/bin/rc mb local/backup --ignore-existing
+      environment:
+        RC_CONFIG_DIR: /root/.config/rc
+      register: mb
+      until: mb.rc == 0
+      retries: 10
+      delay: 3
+      changed_when: true
