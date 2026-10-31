@@ -1,0 +1,58 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Read the cluster configuration and the cron file
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: [/etc/default/wal-g-molecule, /etc/cron.d/wal-g]
+      register: config_files
+
+    - name: Check the cluster configuration and the backup cron job
+      ansible.builtin.assert:
+        that:
+          - "'WALG_S3_PREFIX=s3://backup/molecule' in walg_config"
+          - "'PGDATA=/var/lib/pgsql/data' in walg_config"
+          - "'WALG_CLUSTER_NAME=molecule' in walg_config"
+          - "'WALG_RETENTION_DAYS=7' in walg_config"
+          - "'MAILTO=postgres@' ~ inventory_hostname in cron"
+          - "'0 20 * * * postgres /opt/wal-g/scripts/backup_locked.sh molecule' in cron"
+        fail_msg: "{{ walg_config + cron }}"
+      vars:
+        walg_config: "{{ (config_files.results[0].content | b64decode).splitlines() }}"
+        cron: "{{ (config_files.results[1].content | b64decode).splitlines() }}"
+
+    # backup_locked.sh (the cron job) takes an etcd lock and runs backup.sh
+    - name: Take a backup with the role's backup script, as postgres
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/backup.sh molecule
+      changed_when: true
+
+    - name: List the backups with the role's script
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/list-backups.sh molecule
+      register: backups
+      changed_when: false
+
+    - name: Check that the backup is in the bucket
+      ansible.builtin.assert:
+        that: backups.stdout_lines | select('match', '^base_') | list | length == 1
+        fail_msg: "{{ backups.stdout }}"
+
+    - name: Take a backup again
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/backup.sh molecule
+      changed_when: false
+
+    - name: Read the backup log
+      ansible.builtin.shell: cat /var/log/wal-g/*_backup.log
+      register: backup_log
+      changed_when: false
+
+    - name: Check that the second backup was skipped (within WALG_BACKUP_SKIP_WINDOW)
+      ansible.builtin.assert:
+        that: "'So I am skipping backup on this node.' in backup_log.stdout"
+        fail_msg: "{{ backup_log.stdout }}"
