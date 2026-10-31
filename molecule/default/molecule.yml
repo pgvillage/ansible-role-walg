@@ -1,0 +1,37 @@
+---
+# Tests the role on Rocky Linux 9 and 10 in systemd containers, with wal-g
+# from the pgvillage package repo, backing up a local PostgreSQL server from
+# the distribution to a local RustFS (S3) from the pgvillage repo (see
+# prepare.yml).
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ${MOLECULE_SCENARIO_DIRECTORY}/requirements.yml
+driver:
+  name: podman
+platforms:
+  - name: walg-el9
+    image: docker.io/geerlingguy/docker-rockylinux9-ansible:latest
+    pre_build_image: true
+    command: /usr/sbin/init
+    systemd: always
+  - name: walg-el10
+    image: docker.io/geerlingguy/docker-rockylinux10-ansible:latest
+    pre_build_image: true
+    command: /usr/sbin/init
+    systemd: always
+provisioner:
+  name: ansible
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
