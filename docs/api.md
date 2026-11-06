@@ -13,7 +13,7 @@ by merging these maps (later maps win):
 3. [`walg_generic_defaults`](#wal-g-tuning)
 4. [`walg_retention_defaults`](#backup-retention)
 5. [`walg_log_defaults`](#logging) (with `WALG_LOG_FOLDER` taken from the cluster's `logfolder`)
-6. `WALG_CLUSTER_NAME`, set to the cluster name, and `WALG_ARCHIVE_TIMEOUT` from the cluster's `archive_timeout` (or [`walg_archive_timeout`](#archiving))
+6. `WALG_CLUSTER_NAME`, set to the cluster name, `WALG_BIN` from [`walg_bin`](#installation), and `WALG_ARCHIVE_TIMEOUT` from the cluster's `archive_timeout` (or [`walg_archive_timeout`](#archiving))
 
 ## Installation
 
@@ -25,7 +25,8 @@ by merging these maps (later maps win):
 | `walg_group` | `postgres` | OS group of `walg_user`, used for the log folder and shell profile. |
 | `walg_binary_owner` | `root` | Owner of `walg_home`. |
 | `walg_package_state` | `present` | State passed to the package module for `walg_packages` (e.g. `present`, `latest`, `absent`). |
-| `walg_packages` | `[wal-g-pg]` | OS packages that provide wal-g (the scripts call `/usr/bin/wal-g-pg`). When empty, installation is only allowed on x86_64 and aarch64. |
+| `walg_bin` | `/usr/bin/wal-g-pg` | The wal-g binary the scripts call (`WALG_BIN` in `/etc/default/wal-g-<cluster>`). The packages of the PgVillage apt repositories before v0.0.4 (e.g. `latest`) install it in `/usr/local/bin`. |
+| `walg_packages` | `[wal-g-pg]` | OS packages that provide wal-g (see `walg_bin`). When empty, installation is only allowed on x86_64 and aarch64. |
 
 ## Backup scheduling (cron)
 

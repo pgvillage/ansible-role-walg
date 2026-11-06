@@ -13,4 +13,4 @@ fi
 
 eval "$(sed '/#/d;s/^/export /' "/etc/default/wal-g-${CLUSTER}")"
 
-/usr/bin/wal-g-pg wal-fetch "$WAL_NAME" "$DESTINATION"
+"${WALG_BIN:-/usr/bin/wal-g-pg}" wal-fetch "$WAL_NAME" "$DESTINATION"
