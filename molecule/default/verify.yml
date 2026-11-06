@@ -14,6 +14,7 @@
           - "'WALG_S3_PREFIX=s3://backup/molecule' in walg_config"
           - "'PGDATA=/var/lib/pgsql/data' in walg_config"
           - "'WALG_CLUSTER_NAME=molecule' in walg_config"
+          - "'WALG_BIN=/usr/bin/wal-g-pg' in walg_config"
           - "'WALG_RETENTION_DAYS=7' in walg_config"
           - "'WALG_ARCHIVE_TIMEOUT=15' in walg_config"
           - "'MAILTO=postgres@' ~ inventory_hostname in cron"
