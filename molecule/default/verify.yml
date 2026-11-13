@@ -115,3 +115,121 @@
       delay: 2
       until: archive_up.rc == 0
       changed_when: true
+
+    # restore.sh: a point in time restore from a chain of two delta backups (wal-g restores the
+    # postgresql.auto.conf symlink of every backup in the chain), and a restore of the full backup
+    - name: Make two delta backups with data in between, and data after the restore target
+      become: true
+      become_user: postgres
+      ansible.builtin.shell: |
+        set -e
+        eval "$(sed '/#/d;s/^/export /' /etc/default/wal-g-molecule)"
+        psql() { command psql -X -q -At -h /var/run/postgresql -p 5432 -d postgres "$@"; }
+        psql -c "CREATE TABLE IF NOT EXISTS restore_test (step text, xid xid8 DEFAULT pg_current_xact_id())"
+        psql -c "INSERT INTO restore_test (step) VALUES ('after_full')"
+        "$WALG_BIN" backup-push "$PGDATA"
+        psql -c "INSERT INTO restore_test (step) VALUES ('after_delta1')"
+        "$WALG_BIN" backup-push "$PGDATA"
+        psql -c "INSERT INTO restore_test (step) VALUES ('after_delta2')"
+        sleep 1
+        echo "target=$(psql -c "SELECT to_char(clock_timestamp(), 'YYYY-MM-DD HH24:MI:SS TZH:TZM')")"
+        sleep 1
+        psql -c "INSERT INTO restore_test (step) VALUES ('too_late')"
+        echo "walfile=$(psql -c "SELECT pg_walfile_name(pg_switch_wal())")"
+      register: restore_data
+      changed_when: true
+
+    - name: Wait until the WAL with the data after the restore target is archived
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        psql -X -At -h /var/run/postgresql -p 5432 -d postgres
+        -c "SELECT last_archived_wal >= '{{ restore_data.stdout_lines | select('match', 'walfile=') | first | replace('walfile=', '') }}' FROM pg_stat_archiver"
+      register: archived
+      until: archived.stdout == 't'
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    - name: Check that the backups are a full backup and two deltas
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/list-backups.sh molecule
+      register: backups
+      changed_when: false
+      failed_when: backups.stdout_lines | select('search', '_D_') | list | length != 2
+
+    - name: Restore to the point in time between after_delta2 and too_late
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/restore.sh molecule /var/lib/pgsql/restore_pitr '{{ restore_target }}'
+      vars:
+        restore_target: "{{ restore_data.stdout_lines | select('match', 'target=') | first | replace('target=', '') }}"
+      register: restore_pitr
+      changed_when: true
+
+    - name: Read the data of the restored instance
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        psql -X -At -h /var/run/postgresql -p 15432 -d postgres
+        -c "SELECT pg_is_in_recovery(), string_agg(step, ',' ORDER BY xid) FROM restore_test"
+      register: restored
+      until: restored.stdout is match('^f[|]')
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    - name: Check that the restore replayed the WAL up to the target
+      ansible.builtin.assert:
+        that: restored.stdout == 'f|after_full,after_delta1,after_delta2'
+        fail_msg: "{{ restored.stdout }} {{ restore_pitr.stdout }}"
+
+    - name: Stop the restored instance
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /usr/bin/pg_ctl stop -D /var/lib/pgsql/restore_pitr -m fast
+      changed_when: true
+
+    # A transaction id as target: restore.sh restores the oldest backup (the full one) and replays the WAL
+    - name: Find the transaction id of after_full
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        psql -X -At -h /var/run/postgresql -p 5432 -d postgres
+        -c "SELECT xid FROM restore_test WHERE step = 'after_full'"
+      register: after_full_xid
+      changed_when: false
+
+    - name: Restore the full backup up to after_full
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        /opt/wal-g/scripts/restore.sh molecule /var/lib/pgsql/restore_full {{ after_full_xid.stdout }}
+      register: restore_full
+      changed_when: true
+
+    - name: Read the data of the instance restored from the full backup
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        psql -X -At -h /var/run/postgresql -p 15432 -d postgres
+        -c "SELECT pg_is_in_recovery(), string_agg(step, ',' ORDER BY xid) FROM restore_test"
+      register: restored_full
+      until: restored_full.stdout is match('^f[|]')
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    - name: Check the instance restored from the full backup
+      ansible.builtin.assert:
+        that:
+          - "'Fetching backup ' ~ (backups.stdout_lines | select('match', '^base_') | first).split() | first ~ ' ' in restore_full.stdout"
+          - restored_full.stdout == 'f|after_full'
+        fail_msg: "{{ restored_full.stdout }} {{ restore_full.stdout }}"
+
+    - name: Stop the instance restored from the full backup
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /usr/bin/pg_ctl stop -D /var/lib/pgsql/restore_full -m fast
+      changed_when: true
