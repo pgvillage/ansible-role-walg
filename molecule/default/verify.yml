@@ -185,6 +185,14 @@
         that: restored.stdout == 'f|after_full,after_delta1,after_delta2'
         fail_msg: "{{ restored.stdout }} {{ restore_pitr.stdout }}"
 
+    - name: Read the log directory of the restored instance
+      become: true
+      become_user: postgres
+      ansible.builtin.command: psql -X -At -h /var/run/postgresql -p 15432 -d postgres -c "SHOW log_directory"
+      register: restored_logdir
+      changed_when: false
+      failed_when: restored_logdir.stdout != 'log'
+
     - name: Stop the restored instance
       become: true
       become_user: postgres
@@ -233,6 +241,52 @@
       become_user: postgres
       ansible.builtin.command: /usr/bin/pg_ctl stop -D /var/lib/pgsql/restore_full -m fast
       changed_when: true
+
+    # As the dataRestoreCommand of a stolon point in time recovery (restore.yml of PgVillage)
+    - name: Choose a backup without restoring (dry run)
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/restore.sh molecule /nonexistent
+      environment:
+        RESTORE_DRY_RUN: "1"
+      register: dry_run
+      changed_when: false
+      failed_when: >-
+        dry_run.stdout_lines[-1] != 'RESTORE_BACKUP=' ~ (backups.stdout_lines | select('match', '^base_') | last).split() | first
+
+    - name: Fetch the full backup only, with pg_wal on another folder
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/restore.sh molecule /var/lib/pgsql/fetch_only/data
+      environment:
+        RESTORE_FETCH_ONLY: "1"
+        RESTORE_WALDIR: /var/lib/pgsql/fetch_only/wal
+        RESTORE_BACKUP: "{{ (backups.stdout_lines | select('match', '^base_') | first).split() | first }}"
+      changed_when: true
+
+    - name: Read the fetched folder
+      ansible.builtin.stat:
+        path: "/var/lib/pgsql/fetch_only/data/{{ item }}"
+      loop: [PG_VERSION, pg_wal, recovery.signal, postmaster.pid]
+      register: fetched
+
+    - name: Check that only the backup was fetched
+      ansible.builtin.assert:
+        that:
+          - fetched.results[0].stat.exists
+          - fetched.results[1].stat.islnk and fetched.results[1].stat.lnk_source == '/var/lib/pgsql/fetch_only/wal'
+          - not fetched.results[2].stat.exists
+          - not fetched.results[3].stat.exists
+
+    - name: Restore a backup that doesn't exist
+      become: true
+      become_user: postgres
+      ansible.builtin.command: /opt/wal-g/scripts/restore.sh molecule /var/lib/pgsql/nobackup
+      environment:
+        RESTORE_BACKUP: base_000000010000000000000099
+      register: nobackup
+      changed_when: false
+      failed_when: nobackup.rc == 0 or 'not found in backup-list' not in nobackup.stderr
 
 # An old package installed wal-g in /usr/local/bin, while the scripts call
 # walg_bin (/usr/bin/wal-g-pg). Simulate that by moving the binary away: the
