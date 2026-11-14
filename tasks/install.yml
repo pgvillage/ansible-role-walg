@@ -33,3 +33,27 @@
     name: "{{ item }}"
     state: "{{ walg_package_state }}"
   loop: "{{ walg_packages }}"
+  register: walg_package_installed
+
+# Older pgvillage packages installed wal-g in /usr/local/bin, newer ones in
+# /usr/bin. With `present` an old package stays, and the scripts would call a
+# binary that is not there: fail before the scripts and config change.
+- name: Check that the wal-g binary exists
+  ansible.builtin.stat:
+    path: "{{ walg_bin }}"
+  register: walg_binary
+  when: walg_packages | length > 0
+
+- name: Fail when the wal-g binary is missing
+  ansible.builtin.fail:
+    msg: >-
+      {{ walg_bin }} does not exist after installing {{ walg_packages | join(', ') }}
+      (state {{ walg_package_state }}).
+      Older pgvillage packages install wal-g in /usr/local/bin.
+      Set walg_package_state: latest (once) to move to the new package,
+      or set walg_bin to the old binary (e.g. /usr/local/bin/{{ walg_bin | basename }}).
+  when:
+    - walg_packages | length > 0
+    - not walg_binary.stat.exists
+    # In check mode a package that is not installed yet has no binary
+    - not (ansible_check_mode and walg_package_installed is changed)

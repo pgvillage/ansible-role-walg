@@ -233,3 +233,35 @@
       become_user: postgres
       ansible.builtin.command: /usr/bin/pg_ctl stop -D /var/lib/pgsql/restore_full -m fast
       changed_when: true
+
+# An old package installed wal-g in /usr/local/bin, while the scripts call
+# walg_bin (/usr/bin/wal-g-pg). Simulate that by moving the binary away: the
+# install tasks must fail with a clear message.
+- name: Verify the failure when the wal-g binary is missing
+  hosts: all
+  tasks:
+    - name: Move the wal-g binary away, as if an old package put it in /usr/local/bin
+      ansible.builtin.command: mv /usr/bin/wal-g-pg /usr/local/bin/wal-g-pg
+      changed_when: true
+
+    - name: Run the install tasks with the binary missing
+      block:
+        - name: Run the install tasks of the role
+          ansible.builtin.include_role:
+            name: pgvillage.walg
+            tasks_from: install.yml
+
+        - name: The role should have failed
+          ansible.builtin.fail:
+            msg: The role did not fail on the missing wal-g binary
+      rescue:
+        - name: Check the failure message
+          ansible.builtin.assert:
+            that:
+              - "'/usr/bin/wal-g-pg does not exist' in ansible_failed_result.msg"
+              - "'walg_package_state: latest' in ansible_failed_result.msg"
+            fail_msg: "{{ ansible_failed_result.msg }}"
+      always:
+        - name: Put the wal-g binary back
+          ansible.builtin.command: mv /usr/local/bin/wal-g-pg /usr/bin/wal-g-pg
+          changed_when: true

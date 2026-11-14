@@ -19,7 +19,9 @@ walg_binary_owner: root
 # State passed to the package module for `walg_packages` (e.g. present, latest, absent).
 walg_package_state: present
 # The wal-g binary the scripts call (WALG_BIN in /etc/default/wal-g-<cluster>). The packages of the PgVillage apt
-# repositories before v0.0.4 (e.g. latest) install it in /usr/local/bin.
+# repositories before v0.0.4 (e.g. latest) install it in /usr/local/bin. When the role installs `walg_packages` and
+# this file is not there, it fails before it changes the scripts and config: then set walg_package_state: latest
+# once, or walg_bin to the old binary (e.g. /usr/local/bin/wal-g-pg).
 walg_bin: /usr/bin/wal-g-pg
 # List of OS packages that provide wal-g (see `walg_bin`).
 # When empty, installation is only allowed on x86_64 and aarch64.

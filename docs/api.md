@@ -25,7 +25,7 @@ by merging these maps (later maps win):
 | `walg_group` | `postgres` | OS group of `walg_user`, used for the log folder and shell profile. |
 | `walg_binary_owner` | `root` | Owner of `walg_home`. |
 | `walg_package_state` | `present` | State passed to the package module for `walg_packages` (e.g. `present`, `latest`, `absent`). |
-| `walg_bin` | `/usr/bin/wal-g-pg` | The wal-g binary the scripts call (`WALG_BIN` in `/etc/default/wal-g-<cluster>`). The packages of the PgVillage apt repositories before v0.0.4 (e.g. `latest`) install it in `/usr/local/bin`. |
+| `walg_bin` | `/usr/bin/wal-g-pg` | The wal-g binary the scripts call (`WALG_BIN` in `/etc/default/wal-g-<cluster>`). The packages of the PgVillage apt repositories before v0.0.4 (e.g. `latest`) install it in `/usr/local/bin`. When the role installs `walg_packages` and this file is not there, it fails before it changes the scripts and config: set `walg_package_state: latest` once to move to the new package, or set `walg_bin` to the old binary (e.g. `/usr/local/bin/wal-g-pg`). |
 | `walg_packages` | `[wal-g-pg]` | OS packages that provide wal-g (see `walg_bin`). When empty, installation is only allowed on x86_64 and aarch64. |
 
 ## Backup scheduling (cron)
