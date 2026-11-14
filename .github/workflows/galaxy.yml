@@ -17,7 +17,7 @@ jobs:
 
       # Stap 2: Python installeren (vereist voor Ansible)
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'  # ansible-core doesn't support 3.15 ('3.x') yet
 
