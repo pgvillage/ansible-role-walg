@@ -5,7 +5,7 @@
 - name: Prepare
   hosts: all
   vars:
-    pgvillage_repo: https://repo.pgvillage.org/yum/v0.3.8
+    pgvillage_repo: https://repo.pgvillage.org/yum/v0.3.9
   tasks:
     - name: Add the pgvillage package repo, so the role installs wal-g-pg by name
       ansible.builtin.yum_repository:
@@ -29,6 +29,26 @@
       ansible.builtin.command: postgresql-setup --initdb
       args:
         creates: /var/lib/pgsql/data/PG_VERSION
+
+    # As stolon does (it disables ALTER SYSTEM this way): wal-g has to restore this symlink from every backup of a
+    # delta chain (verify.yml restores from one)
+    - name: Make postgresql.auto.conf a symlink to /dev/null
+      ansible.builtin.file:
+        src: /dev/null
+        dest: /var/lib/pgsql/data/postgresql.auto.conf
+        state: link
+        force: true
+        owner: postgres
+        group: postgres
+        follow: false
+
+    # archive.sh comes with the role (converge): until then, archiving fails and PostgreSQL retries
+    - name: Archive the WAL with the role's archive.sh
+      ansible.builtin.blockinfile:
+        path: /var/lib/pgsql/data/postgresql.conf
+        block: |
+          archive_mode = on
+          archive_command = '/opt/wal-g/scripts/archive.sh molecule %p'
 
     - name: Start PostgreSQL
       ansible.builtin.systemd:
