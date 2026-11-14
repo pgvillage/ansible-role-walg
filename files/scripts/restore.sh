@@ -73,6 +73,15 @@ latest_backup() {
 #   restore.sh cluster1 /data/restore/cluster1 12345678
 #   restore.sh cluster1 /data/restore/cluster1 before_migration
 #
+# Environment (optional):
+#
+#   RESTORE_BACKUP=<name>   restore this backup (a name from backup-list) instead of choosing one for the target
+#   RESTORE_FETCH_ONLY=1    only fetch the backup into the restore directory: no recovery settings, no start. Used as
+#                           the dataRestoreCommand of a stolon point in time recovery (restore.yml of PgVillage), where
+#                           the stolon keeper sets the recovery settings and starts PostgreSQL itself.
+#   RESTORE_WALDIR=<dir>    make pg_wal a symlink to this (empty) directory, as the stolon keeper does with --wal-dir
+#   RESTORE_DRY_RUN=1       only print the backup it would restore (RESTORE_BACKUP=<name>) and stop
+#
 
 SCRIPTDIR=$(dirname "$(readlink -f "$0")")
 CLUSTER="${1:?Cluster name required}"
@@ -95,20 +104,30 @@ RESTORETARGETINPUT="${3:-${RESTORETARGETINPUT:-}}"
 #   cluster2: PGPORT=5433 -> restore port 15433
 PGRESTOREPORT="${PGRESTOREPORT:-$((PGPORT + 10000))}"
 
-mkdir -p "$PGRESTORE"
-
-if [ -e "$PGRESTORE/PG_VERSION" ]; then
-  echo "File $PGRESTORE/PG_VERSION exists."
-  echo "This is not an empty data directory."
-  echo "Clean the directory or choose another restore directory, then rerun this script."
-  exit 1
-fi
-
 #
 # Determine which backup to fetch and, if applicable, which PITR target
 # PostgreSQL should recover to.
 #
-if [ -z "$RESTORETARGETINPUT" ]; then
+if [ -n "${RESTORE_BACKUP:-}" ]; then
+
+  # A backup was chosen: restore it, and leave the target (if any) to PostgreSQL.
+  RESTORETARGET="$RESTORE_BACKUP"
+  if ! "${WALG_BIN:-/usr/bin/wal-g-pg}" backup-list | awk 'FNR > 1 {print $1}' | grep -qxF "$RESTORETARGET"; then
+    echo "Backup $RESTORETARGET not found in backup-list." >&2
+    exit 1
+  fi
+  if [ -n "$RESTORETARGETINPUT" ]; then
+    if [[ "$RESTORETARGETINPUT" =~ ^[0-9]+$ ]]; then
+      RESTORETARGETXID="$RESTORETARGETINPUT"
+    elif RESTORETARGETTIME=$(date -d "$RESTORETARGETINPUT" --rfc-3339 seconds 2>/dev/null); then
+      :
+    else
+      RESTORETARGETTIME=""
+      RESTORETARGETNAME="$RESTORETARGETINPUT"
+    fi
+  fi
+
+elif [ -z "$RESTORETARGETINPUT" ]; then
 
   # No target supplied: restore the latest backup.
   RESTORETARGET=$(latest_backup)
@@ -160,6 +179,20 @@ if [ -z "$RESTORETARGET" ]; then
   exit 1
 fi
 
+if [ -n "${RESTORE_DRY_RUN:-}" ]; then
+  echo "RESTORE_BACKUP=$RESTORETARGET"
+  exit 0
+fi
+
+mkdir -p "$PGRESTORE"
+
+if [ -e "$PGRESTORE/PG_VERSION" ]; then
+  echo "File $PGRESTORE/PG_VERSION exists."
+  echo "This is not an empty data directory."
+  echo "Clean the directory or choose another restore directory, then rerun this script."
+  exit 1
+fi
+
 echo "Fetching backup $RESTORETARGET into $PGRESTORE"
 
 backup_fetch "$PGRESTORE" "$RESTORETARGET"
@@ -184,14 +217,29 @@ if [ "$PGVERSION" -ge 10 ]; then
 else
   WALDIR="$PGRESTORE/pg_xlog"
 fi
-if [ ! -d "$WALDIR" ]; then
+if [ -n "${RESTORE_WALDIR:-}" ]; then
+  mkdir -p "$RESTORE_WALDIR"
+  chmod 0700 "$RESTORE_WALDIR"
+  if [ -n "$(ls -A "$RESTORE_WALDIR")" ]; then
+    echo "WAL directory $RESTORE_WALDIR is not empty." >&2
+    exit 1
+  fi
+  rm -rf "$WALDIR"
+  ln -s "$RESTORE_WALDIR" "$WALDIR"
+elif [ ! -e "$WALDIR" ]; then
   mkdir -m 0700 "$WALDIR"
+fi
+
+if [ -n "${RESTORE_FETCH_ONLY:-}" ]; then
+  echo "Fetched backup $RESTORETARGET into $PGRESTORE (RESTORE_FETCH_ONLY: not starting it)"
+  exit 0
 fi
 
 #
 # If we're restoring somewhere other than the cluster's normal PGDATA,
 # make sure the restored PostgreSQL instance cannot conflict with the
-# running Stolon instance and doesn't archive WAL back into the repository.
+# running Stolon instance, doesn't archive WAL back into the repository, doesn't log into the log directory of the
+# running cluster (the restored postgresql.conf has its log_directory), and doesn't wait for synchronous standbys.
 #
 if [ "$PGRESTORE" != "$PGDATA" ]; then
   {
@@ -199,6 +247,8 @@ if [ "$PGRESTORE" != "$PGDATA" ]; then
     echo "# Added by WAL-G restore.sh"
     echo "port = $PGRESTOREPORT"
     echo "archive_command = '/bin/true'"
+    echo "log_directory = 'log'"
+    echo "synchronous_standby_names = ''"
   } >> "$PGRESTORE/postgresql.conf"
 fi
 

@@ -4,6 +4,13 @@ set -e
 function backup() {
   echo
   # if there are existing backups younger then WALG_BACKUP_SKIP_WINDOW, then we can skip backup.
+  # WALG_BACKUP_FORCE=1 makes a full backup anyway (restore.yml of PgVillage does, after a restore: the restored cluster
+  # runs on a new timeline, and the newest backups are from the old one).
+  local full=()
+  if [ -n "${WALG_BACKUP_FORCE:-}" ]; then
+    WALG_BACKUP_SKIP_WINDOW=0
+    full=(--full)
+  fi
   SKIP_AFTER=$(date -d "0${WALG_BACKUP_SKIP_WINDOW} hour ago" --iso-8601=seconds)
   BACKUPS_SINCE=$("${WALG_BIN:-/usr/bin/wal-g-pg}" backup-list | awk -v skipAfter="$SKIP_AFTER" '{if (FNR>1 && skipAfter<=$2) {print}}' | wc -l)
   if [ "${BACKUPS_SINCE}" -gt 0 ]; then
@@ -15,7 +22,7 @@ function backup() {
   "$SCRIPTDIR/maintenance.sh" "$CLUSTER"
   
   echo "Pushing backup"
-  "${WALG_BIN:-/usr/bin/wal-g-pg}" backup-push "${PGDATA}"
+  "${WALG_BIN:-/usr/bin/wal-g-pg}" backup-push "${full[@]}" "${PGDATA}"
   
   "$SCRIPTDIR/maintenance.sh" "$CLUSTER"
 }
